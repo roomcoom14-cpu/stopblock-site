@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0B0A11" />
+    <title>Пользовательское соглашение · STOPBLOCK VPN</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 3 57 11.5v18.7C57 45.9 46.2 56.3 32 61 17.8 56.3 7 45.9 7 30.2V11.5L32 3z' fill='%23ff4d9d'/%3E%3Cpath d='M35.5 13 19.5 38.5h8.7L24.5 52l20.3-26.2h-9.9L35.5 13z' fill='%231a0710'/%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        --accent: #ff6fb1;
+        --bg: #0b0a11;
+        --card: #1c1926;
+        --text: #f5f3fa;
+        --muted: #a9a4b8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        background: linear-gradient(180deg, rgba(255, 111, 177, 0.28) 0%, rgba(120, 35, 85, 0.3) 22%, var(--bg) 55%) fixed, var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+        padding: 24px 14px 48px;
+      }
+      .wrap { max-width: 640px; margin: 0 auto; }
+      .brand {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 18px; font-weight: 800; letter-spacing: 0.6px;
+        margin-bottom: 18px;
+      }
+      .brand span { color: var(--accent); }
+      .brand svg { width: 30px; height: 30px; filter: drop-shadow(0 0 8px rgba(255, 111, 177, 0.5)); }
+      .card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 12px;
+        backdrop-filter: blur(14px);
+      }
+      h1 { font-size: 22px; margin: 0 0 12px; }
+      h2 { font-size: 15px; margin: 18px 0 6px; }
+      p, li { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+      ol { padding-left: 22px; margin: 0 0 8px; }
+      .back {
+        display: inline-block; margin-top: 6px; padding: 11px 20px;
+        border-radius: 24px; text-decoration: none; font-weight: 600; font-size: 14px;
+        background: linear-gradient(135deg, #ff4d9d, #ff6fb1); color: #2b0512;
+        box-shadow: 0 8px 22px rgba(255, 77, 157, 0.32);
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+      }
+      .back:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(255, 77, 157, 0.5); }
+      .note { font-size: 12px; color: #7a7488; margin-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff8cc2" />
+              <stop offset="100%" stop-color="#ff3d96" />
+            </linearGradient>
+          </defs>
+          <path d="M32 3 57 11.5v18.7C57 45.9 46.2 56.3 32 61 17.8 56.3 7 45.9 7 30.2V11.5L32 3z" fill="url(#g)" />
+          <path d="M35.5 13 19.5 38.5h8.7L24.5 52l20.3-26.2h-9.9L35.5 13z" fill="#1a0710" />
+        </svg>
+        STOP<span>BLOCK</span> VPN
+      </div>
+
+      <div class="card">
+        <h1>Пользовательское соглашение</h1>
+        <ol>
+          <li>
+            Сервис предоставляет доступ к защищённому каналу связи на условиях
+            выбранной подписки (срок, количество устройств, лимиты трафика).
+          </li>
+          <li>
+            Запрещено использование сервиса для противоправной деятельности,
+            рассылки спама и атак на третьих лиц.
+          </li>
+          <li>
+            Оплата подписки означает согласие с условиями выбранного тарифа.
+          </li>
+          <li>
+            Администрация вправе ограничить доступ при нарушении условий или
+            выявлении мошенничества.
+          </li>
+          <li>
+            Возврат средств возможен в течение 24 часов с момента оплаты, если
+            сервис не использовался.
+          </li>
+        </ol>
+        <h2>Ответственность</h2>
+        <p>
+          Сервис предоставляется «как есть». Мы стремимся к максимальной
+          доступности, но не гарантируем работу без перерывов.
+        </p>
+      </div>
+
+      <a class="back" href="javascript:history.back()">← Вернуться назад</a>
+      <p class="note">Демо-версия веб-приложения STOPBLOCK VPN.</p>
+    </div>
+  </body>
+</html>

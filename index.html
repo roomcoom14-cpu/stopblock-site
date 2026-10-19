@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0B0A11" />
+    <title>STOPBLOCK VPN — веб-версия</title>
+    <meta
+      name="description"
+      content="STOPBLOCK VPN: подключение за минуту, до 10 устройств, бесплатный пробный период. Веб-версия сервиса с тарифами, инструкциями, играми и отзывами."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="STOPBLOCK VPN — веб-версия" />
+    <meta
+      property="og:description"
+      content="Быстрый и безопасный доступ в интернет. Тарифы, установка, бонусные игры — всё в одном окне."
+    />
+    <!-- фирменный щит STOPBLOCK как favicon -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 3 57 11.5v18.7C57 45.9 46.2 56.3 32 61 17.8 56.3 7 45.9 7 30.2V11.5L32 3z' fill='%23ff4d9d'/%3E%3Cpath d='M35.5 13 19.5 38.5h8.7L24.5 52l20.3-26.2h-9.9L35.5 13z' fill='%231a0710'/%3E%3C/svg%3E"
+    />
+    <!-- тема до загрузки бандла: без белой вспышки на старте -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("stopblock.theme");
+          if (t !== "light" && t !== "dark") {
+            t =
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark";
+          }
+          document.documentElement.classList.add("tg-" + t);
+          document.documentElement.style.backgroundColor =
+            t === "light" ? "#ffffff" : "#0b0a11";
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta)
+            meta.setAttribute("content", t === "light" ? "#ffffff" : "#0b0a11");
+        } catch (e) {
+          /* приватный режим — остаёмся в тёмной теме по умолчанию */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
