@@ -22,6 +22,8 @@ export interface VpnAccountInfo {
 }
 
 export interface Profile {
+  /** Неиспользованная скидка на следующую покупку (из игры/промокода). */
+  discount?: { percent: number } | null;
   user: {
     id: number;
     telegram_id: number;
@@ -77,9 +79,8 @@ export interface AppConfig {
   game: {
     enabled: boolean;
     cooldown_hours: number;
-    quiz_questions: number;
-    quiz_reward_days: number;
-    quiz_perfect_days: number;
+    safe_digits: number;
+    safe_attempts: number;
   };
   trial_hours: number;
   is_admin: boolean;
@@ -143,57 +144,106 @@ export interface ReferralInfo {
   rewards: number;
 }
 
-/** Сектор колеса фортуны: дней и вес выпадения. */
-export interface WheelPrize {
-  days: number;
-  weight: number;
+/** Типы игровых призов: часы доступа, скидка на покупку, дни (легаси). */
+export type PrizeKind = "hours" | "discount" | "days";
+
+/** Приз игры: тип, значение и подпись для показа игроку. */
+export interface GamePrize {
+  kind: PrizeKind;
+  value: number;
+  label: string;
+  weight?: number;
 }
 
-/**
- * Общее состояние экрана «Игра»: доступность колеса/викторины,
- * кулдауны и суммарно заработанные бонусные дни.
- */
+/** Один ход сейфа: догадка и подсказки по цифрам (2 — место, 1 — есть, 0 — нет). */
+export interface SafeAttempt {
+  guess: string;
+  feedback: number[];
+}
+
+/** Состояние раунда «Взлома сейфа». */
+export interface SafeState {
+  can_guess: boolean;
+  next_at: string | null;
+  digits: number;
+  attempt_limit: number;
+  attempts_used: number;
+  status: "idle" | "playing" | "won" | "lost";
+  attempts: SafeAttempt[];
+  reward_hours: number;
+  /** Подпись выигранного приза («12 часов», «Скидка 30%») — только после выигрыша. */
+  prize_label?: string | null;
+  /** Код сейфа — только после проигрыша, иначе null (сервер не утекает). */
+  code?: string | null;
+}
+
+/** Редкость кейса: ключ, название, цвет, вес выпадения и подпись приза. */
+export interface CaseTier {
+  key: string;
+  label: string;
+  color: string;
+  kind: PrizeKind;
+  value: number;
+  weight: number;
+  prize_label: string;
+}
+
+export interface CaseState {
+  can_open: boolean;
+  next_at: string | null;
+  tiers: CaseTier[];
+}
+
+/** Исход слота: результат, вес и подпись приза (null — исход без приза). */
+export interface SlotOutcome {
+  result: string;
+  weight: number;
+  prize_label: string | null;
+}
+
+export interface SlotState {
+  can_spin: boolean;
+  next_at: string | null;
+  symbols: string[];
+  outcomes: SlotOutcome[];
+}
+
+/** Общее состояние экрана «Игра»: три игры, кулдауны, бонусы и скидка. */
 export interface GameState {
   enabled: boolean;
-  total_bonus_days?: number;
-  cooldown_hours?: number;
-  can_spin?: boolean;
-  next_spin_at?: string | null;
-  can_quiz?: boolean;
-  next_quiz_at?: string | null;
-  wheel?: { prizes: WheelPrize[] };
-  quiz?: {
-    total: number;
-    reward_days: number;
-    perfect_days: number;
-  };
-}
-
-/** Один вопрос викторины. Индекс правильного ответа клиенту не известен. */
-export interface QuizQuestion {
-  id: string;
-  q: string;
-  options: string[];
-}
-
-export interface QuizRound {
-  questions: QuizQuestion[];
-  total: number;
-  reward_days: number;
-  perfect_days: number;
-}
-
-/** Ответ сервера на вращение колеса / отправку ответов викторины. */
-export interface GamePlayResult {
-  reward_days: number;
-  correct?: number;
-  total?: number;
-  perfect?: boolean;
   total_bonus_days: number;
-  can_spin: boolean;
-  next_spin_at: string | null;
-  can_quiz: boolean;
-  next_quiz_at: string | null;
+  total_bonus_hours: number;
+  discount: { percent: number } | null;
+  cooldown_hours: number;
+  safe?: SafeState;
+  case?: CaseState;
+  slot?: SlotState;
+}
+
+/** Ответ хода в сейфе: подсказка последней попытки поверх состояния. */
+export interface SafeGuessResult extends GameState {
+  feedback: number[];
+  won: boolean;
+  prize: GamePrize | null;
+  reward_days: number;
+  reward_hours: number;
+}
+
+/** Результат открытия кейса поверх состояния. */
+export interface CaseOpenResult extends GameState {
+  tier: { key: string; label: string; color: string };
+  prize: GamePrize;
+  reward_days: number;
+  reward_hours: number;
+}
+
+/** Результат вращения слота поверх состояния. */
+export interface SlotSpinResult extends GameState {
+  result: string;
+  reels: string[];
+  prize: GamePrize | null;
+  reward_days: number;
+  reward_hours: number;
 }
 
 export interface Review {

@@ -15,14 +15,17 @@ import type {
   AppContent,
   BroadcastStatus,
   GameState,
-  GamePlayResult,
+  GamePrize,
+  SafeAttempt,
+  SafeGuessResult,
+  CaseOpenResult,
+  SlotSpinResult,
   PaymentCreated,
   PaymentStatus,
   Plan,
+  PrizeKind,
   Profile,
   PromoCheck,
-  QuizQuestion,
-  QuizRound,
   ReferralInfo,
   Review,
   ReviewsResponse,
@@ -119,10 +122,21 @@ interface DemoStore {
   has_review: boolean;
   game: {
     total_bonus_days: number;
-    next_spin_at: string | null;
-    next_quiz_at: string | null;
-    /** Правильные ответы текущего раунда викторины (как у сервера). */
-    quiz_correct: Record<string, number> | null;
+    total_bonus_hours: number;
+    /** Неиспользованная скидка на следующую покупку (одна, как на сервере). */
+    discount: { percent: number } | null;
+    /** Живой раунд сейфа: начало (для кулдауна), код, попытки и статус. */
+    safe: {
+      at: string | null;
+      code: string | null;
+      attempts: SafeAttempt[];
+      status: "idle" | "playing" | "won" | "lost";
+      prize_label: string | null;
+      reward_hours: number;
+    };
+    /** Последнее открытие кейса и последний бросок слота — свои кулдауны. */
+    case_at: string | null;
+    slot_at: string | null;
   };
   plans: Plan[];
   broadcast: BroadcastStatus & { started_at?: string };
@@ -135,62 +149,41 @@ const STORE_KEY = "stopblock.site.store.v1";
 
 /* ------------------------------------------------------------------ конфиг */
 
-const WHEEL_PRIZES = [
-  { days: 1, weight: 30 },
-  { days: 2, weight: 25 },
-  { days: 3, weight: 20 },
-  { days: 5, weight: 15 },
-  { days: 7, weight: 8 },
-  { days: 0, weight: 2 },
+/* ------------------------------------------------------------------ игры */
+
+/** Пороги взлома сейфа: «за N попыток или быстрее» → приз (как на сервере). */
+const SAFE_PRIZES: { attempts: number; kind: PrizeKind; value: number }[] = [
+  { attempts: 2, kind: "discount", value: 30 },
+  { attempts: 3, kind: "hours", value: 12 },
+  { attempts: 4, kind: "hours", value: 5 },
+  { attempts: 6, kind: "hours", value: 1 },
 ];
 
-const QUIZ_POOL: { id: string; q: string; options: string[] }[] = [
-  {
-    id: "q1",
-    q: "Что делает VPN-туннель?",
-    options: [
-      "Шифрует трафик и меняет ваш IP-адрес",
-      "Ускоряет скорость интернета",
-      "Удаляет вирусы с устройства",
-      "Скачает файлы быстрее",
-    ],
-  },
-  {
-    id: "q2",
-    q: "Какой протокол использует STOPBLOCK для доступа?",
-    options: ["VLESS + TLS/Reality", "FTP", "SMTP", "Telnet"],
-  },
-  {
-    id: "q3",
-    q: "Зачем менять IP-адрес при подключении?",
-    options: [
-      "Сайты видят адрес сервера вместо вашего",
-      "Чтобы экономить трафик",
-      "Чтобы уменьшить пинг до минимума",
-      "Чтобы экономить заряд батареи",
-    ],
-  },
-  {
-    id: "q4",
-    q: "Что означает «без логов»?",
-    options: [
-      "Сервис не сохраняет историю вашей активности",
-      "На сервере нет журнальных файлов",
-      "Провайдер не пишет данные",
-      "Нет записи звонков",
-    ],
-  },
-  {
-    id: "q5",
-    q: "Сайт не открывается — что делать в первую очередь?",
-    options: [
-      "Проверить подключение VPN и сменить локацию",
-      "Отключить Wi-Fi на телефоне",
-      "Переустановить браузер",
-      "Сбросить настройки телефона",
-    ],
-  },
+/** Редкости кейса дня: ключ → название, цвет, приз и вес (зеркало бэкенда). */
+const CASE_TIERS = [
+  { key: "common", label: "Обычный", color: "#6fd08c", kind: "hours", value: 1, weight: 45 },
+  { key: "rare", label: "Редкий", color: "#58a6ff", kind: "hours", value: 5, weight: 30 },
+  { key: "epic", label: "Эпический", color: "#c084fc", kind: "hours", value: 12, weight: 15 },
+  { key: "legendary", label: "Легендарный", color: "#ffc84d", kind: "discount", value: 30, weight: 10 },
+] as const;
+
+/** Исходы слота: тройки, пара и «мимо» — веса долей, сумма не важна. */
+const SLOT_OUTCOMES: {
+  result: string;
+  kind: PrizeKind | null;
+  value: number;
+  weight: number;
+}[] = [
+  { result: "triple:💎", kind: "discount", value: 30, weight: 4 },
+  { result: "triple:🛡️", kind: "hours", value: 12, weight: 10 },
+  { result: "triple:🔒", kind: "hours", value: 5, weight: 26 },
+  { result: "triple:⭐", kind: "hours", value: 1, weight: 40 },
+  { result: "pair", kind: "hours", value: 1, weight: 50 },
+  { result: "miss", kind: null, value: 0, weight: 60 },
 ];
+
+/** Вселенная барабанов слота (символы троек подмешиваются автоматически). */
+const SLOT_SYMBOLS = ["💎", "🛡️", "🔒", "⭐"];
 
 const CONFIG: AppConfig = {
   brand: "STOPBLOCK VPN — быстрый и безопасный доступ",
@@ -206,9 +199,8 @@ const CONFIG: AppConfig = {
   game: {
     enabled: true,
     cooldown_hours: 1,
-    quiz_questions: 5,
-    quiz_reward_days: 1,
-    quiz_perfect_days: 3,
+    safe_digits: 4,
+    safe_attempts: 6,
   },
   trial_hours: 120,
   is_admin: true,
@@ -528,9 +520,18 @@ function freshStore(): DemoStore {
     has_review: false,
     game: {
       total_bonus_days: 0,
-      next_spin_at: null,
-      next_quiz_at: null,
-      quiz_correct: null,
+      total_bonus_hours: 0,
+      discount: null,
+      safe: {
+        at: null,
+        code: null,
+        attempts: [],
+        status: "idle",
+        prize_label: null,
+        reward_hours: 0,
+      },
+      case_at: null,
+      slot_at: null,
     },
     plans: SEED_PLANS.map((p) => ({ ...p })),
     broadcast: { status: "idle" },
@@ -545,8 +546,18 @@ function load(): DemoStore {
     if (!raw) return freshStore();
     const parsed = JSON.parse(raw) as Partial<DemoStore>;
     const base = freshStore();
-    // незнакомые поля новых версий не должны ломать загрузку
-    return { ...base, ...parsed, me: { ...base.me, ...(parsed.me ?? {}) } };
+    // незнакомые поля новых версий не должны ломать загрузку,
+    // а игровое состояние из старой версии (колесо/викторина) — переходит в новое
+    return {
+      ...base,
+      ...parsed,
+      me: { ...base.me, ...(parsed.me ?? {}) },
+      game: {
+        ...base.game,
+        ...(parsed.game ?? {}),
+        safe: { ...base.game.safe, ...(parsed.game?.safe ?? {}) },
+      },
+    };
   } catch {
     return freshStore();
   }
@@ -568,13 +579,17 @@ function activeSub(sub: SubRec | null): SubRec | null {
 
 /* ------------------------------------------------------------------ профиль */
 
-function buildProfile(u: UserRec): Profile {
+function buildProfile(
+  u: UserRec,
+  discount: { percent: number } | null = null
+): Profile {
   const sub = activeSub(u.sub);
   const fullName = [u.first_name, "Пользователь"].join(" ");
   const display = u.username ? `@${u.username}` : fullName;
   const plan = sub?.plan_name ?? null;
 
   return {
+    discount,
     user: {
       id: u.id,
       telegram_id: u.telegram_id,
@@ -658,6 +673,26 @@ function addBonusDays(s: DemoStore, days: number): void {
   }
 }
 
+/** Начислить бонусные часы: к активной подписке либо новой бонусной. */
+function addBonusHours(s: DemoStore, hours: number): void {
+  if (hours <= 0) return;
+  const sub = activeSub(s.me.sub);
+  const now = Date.now();
+  if (sub) {
+    const base = Math.max(now, Date.parse(sub.ends_at));
+    sub.ends_at = new Date(base + hours * HOUR).toISOString();
+  } else {
+    s.me.sub = {
+      kind: "referral",
+      is_trial: false,
+      plan_name: "Бонус",
+      started_at: new Date(now).toISOString(),
+      ends_at: new Date(now + hours * HOUR).toISOString(),
+      devices: 3,
+    };
+  }
+}
+
 function findUser(s: DemoStore, telegramId: number): UserRec | null {
   if (s.me.telegram_id === telegramId) return s.me;
   return s.users.find((u) => u.telegram_id === telegramId) ?? null;
@@ -668,8 +703,9 @@ function makeVpnLink(): string {
   return `vless://${id}@nl1.stopblock.example:443?security=tls&sni=nl1.stopblock.example&type=tcp&flow=xtls-rprx-vision#STOPBLOCK%20NL`;
 }
 
-/** Обработка параметров URL: ?reset=1 сбрасывает демо-данные, ?ref= даёт бонус. */
-function consumeUrlParams(s: DemoStore): void {
+/** Обработка параметров URL: ?reset=1 сбрасывает демо-данные, ?ref= даёт бонус.
+ *  Возвращает true, если данные были сброшены — тогда их нельзя сохранять обратно. */
+function consumeUrlParams(s: DemoStore): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
     const clean = `${window.location.pathname}${window.location.hash}`;
@@ -679,12 +715,12 @@ function consumeUrlParams(s: DemoStore): void {
       localStorage.removeItem(STORE_KEY);
       window.history.replaceState(null, "", clean);
       window.location.reload();
-      return;
+      return true;
     }
 
     const ref = params.get("ref");
-    if (!ref) return;
-    if (s.ref_seen === ref) return;
+    if (!ref) return false;
+    if (s.ref_seen === ref) return false;
     s.ref_seen = ref;
     s.me.referral.invited += 1;
     s.me.referral.rewards += 1;
@@ -693,6 +729,7 @@ function consumeUrlParams(s: DemoStore): void {
   } catch {
     /* нет window (SSR) — пропускаем */
   }
+  return false;
 }
 
 /* ------------------------------------------------------------------ публичное */
@@ -710,14 +747,15 @@ export async function getContent(): Promise<AppContent> {
 export async function bootstrap(): Promise<Profile> {
   await wait();
   const s = load();
-  consumeUrlParams(s);
-  save(s);
-  return buildProfile(s.me);
+  const reset = consumeUrlParams(s);
+  if (!reset) save(s); // после сброса не записываем старое хранилище обратно
+  return buildProfile(s.me, s.game.discount);
 }
 
 export async function getProfile(): Promise<Profile> {
   await wait();
-  return buildProfile(load().me);
+  const s = load();
+  return buildProfile(s.me, s.game.discount);
 }
 
 /** Кнопка «ЗАБРАТЬ 5 ДНЕЙ БЕСПЛАТНО». */
@@ -726,7 +764,7 @@ export async function claimTrial(): Promise<Profile> {
   const s = load();
   if (s.me.trial_used) {
     save(s);
-    return { ...buildProfile(s.me), trial_granted: false };
+    return { ...buildProfile(s.me, s.game.discount), trial_granted: false };
   }
   const now = Date.now();
   s.me.trial_used = true;
@@ -739,7 +777,7 @@ export async function claimTrial(): Promise<Profile> {
     devices: 2,
   };
   save(s);
-  return { ...buildProfile(s.me), trial_granted: true };
+  return { ...buildProfile(s.me, s.game.discount), trial_granted: true };
 }
 
 /** Гейт канала: joined: null — проверка недоступна, гейт не блокирует. */
@@ -804,8 +842,14 @@ export async function createPayment(
   if (!plan) throw new ApiError(404, "Тариф недоступен.");
 
   const total = plan.price + (DEVICE_SURCHARGE[devices] ?? 0);
-  const percent = promoCode ? PROMO_CODES[promoCode.trim().toUpperCase()] ?? 0 : 0;
+  const promoPercent = promoCode
+    ? PROMO_CODES[promoCode.trim().toUpperCase()] ?? 0
+    : 0;
+  // скидка из игры применяется автоматически — если не задан промокод
+  const gamePercent = promoPercent === 0 ? s.game.discount?.percent ?? 0 : 0;
+  const percent = promoPercent || gamePercent;
   const amount = Math.max(1, Math.floor((total * (100 - percent)) / 100));
+  if (gamePercent > 0) s.game.discount = null; // скидка израсходована
 
   const payment: PaymentRec = {
     id: uuid(),
@@ -944,140 +988,358 @@ export async function addReview(text: string, rating: number): Promise<{ rating:
 
 /* ------------------------------------------------------------------ мини-игры */
 
-export async function getGameState(): Promise<GameState> {
-  await wait(200, 420);
-  const s = load();
-  const now = Date.now();
-  const nextSpin = s.game.next_spin_at && Date.parse(s.game.next_spin_at) > now
-    ? s.game.next_spin_at
-    : null;
-  const nextQuiz = s.game.next_quiz_at && Date.parse(s.game.next_quiz_at) > now
-    ? s.game.next_quiz_at
-    : null;
+/** Русское склонение: 1 час / 2 часа / 5 часов, 1 день / 2 дня / 5 дней. */
+function pluralRu(n: number, one: string, few: string, many: string): string {
+  const n10 = n % 10;
+  const n100 = n % 100;
+  if (n10 === 1 && n100 !== 11) return `${n} ${one}`;
+  if (n10 >= 2 && n10 <= 4 && !(n100 >= 12 && n100 <= 14)) return `${n} ${few}`;
+  return `${n} ${many}`;
+}
+
+/** Человекочитаемая подпись приза — зеркало app/services/game.py. */
+function prizeLabel(kind: PrizeKind, value: number): string {
+  if (kind === "hours") return pluralRu(value, "час", "часа", "часов");
+  if (kind === "days") return pluralRu(value, "день", "дня", "дней");
+  return `Скидка ${value}%`;
+}
+
+/** Начисление приза: часы/дни — к подписке, скидка — в кошелёк скидок. */
+function grantPrize(
+  s: DemoStore,
+  kind: PrizeKind,
+  value: number
+): { reward_days: number; reward_hours: number } {
+  let reward_days = 0;
+  let reward_hours = 0;
+  if (kind === "hours") {
+    reward_hours = value;
+    addBonusHours(s, value);
+    s.game.total_bonus_hours += value;
+  } else if (kind === "days") {
+    reward_days = value;
+    addBonusDays(s, value);
+    s.game.total_bonus_days += value;
+  } else {
+    // одна активная скидка на пользователя — новая заменяет старую
+    s.game.discount = { percent: value };
+  }
+  return { reward_days, reward_hours };
+}
+
+/** Взвешенный выбор по весам — зеркало random.choices с бэкенда. */
+function weightedPick<T extends { weight: number }>(items: T[]): T {
+  const total = items.reduce((sum, i) => sum + Math.max(1, i.weight), 0);
+  let roll = Math.random() * total;
+  for (const item of items) {
+    roll -= Math.max(1, item.weight);
+    if (roll <= 0) return item;
+  }
+  return items[items.length - 1];
+}
+
+/** FNV-1a хеш — детерминированный сид (как crc32 на сервере). */
+function seedFrom(key: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Псевдослучайный генератор от сида (mulberry32). */
+function mulberry32(a: number): () => number {
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Дневной код сейфа: у пользователя в течение суток один и тот же. */
+function makeSafeCode(digits: number): string {
+  const day = new Date().toISOString().slice(0, 10);
+  const rnd = mulberry32(seedFrom(`1:${day}:safe`));
+  let out = "";
+  for (let i = 0; i < digits; i++) out += String(Math.floor(rnd() * 10));
+  return out;
+}
+
+/** Подсказки по цифрам (мастерmind): 2 — место, 1 — есть, 0 — нет. */
+function safeFeedback(code: string, guess: string): number[] {
+  const length = Math.min(code.length, guess.length);
+  const fb = new Array<number>(length).fill(0);
+  const leftover: Record<string, number> = {};
+  for (let i = 0; i < length; i++) {
+    if (code[i] === guess[i]) fb[i] = 2;
+    else leftover[code[i]] = (leftover[code[i]] ?? 0) + 1;
+  }
+  for (let i = 0; i < length; i++) {
+    if (fb[i] === 2) continue;
+    const g = guess[i];
+    if ((leftover[g] ?? 0) > 0) {
+      fb[i] = 1;
+      leftover[g] -= 1;
+    }
+  }
+  return fb;
+}
+
+/** Жив ли раунд сейфа: начат и кулдаун ещё не истёк (как на сервере). */
+function safeRoundLive(s: DemoStore): boolean {
+  const at = s.game.safe.at ? Date.parse(s.game.safe.at) : 0;
+  if (!at) return false;
+  return Date.now() - at < CONFIG.game.cooldown_hours * HOUR;
+}
+
+/** Свободна ли игра: нет активного кулдауна + момент следующего запуска. */
+function cooldownView(lastAt: string | null): {
+  can: boolean;
+  next_at: string | null;
+} {
+  if (!lastAt) return { can: true, next_at: null };
+  const next = Date.parse(lastAt) + CONFIG.game.cooldown_hours * HOUR;
+  if (Date.now() >= next) return { can: true, next_at: null };
+  return { can: false, next_at: new Date(next).toISOString() };
+}
+
+/** Редкости кейса с подписями призов — для состояния и ленты карусели. */
+function caseTiers() {
+  return CASE_TIERS.map((t) => ({
+    key: t.key,
+    label: t.label,
+    color: t.color,
+    kind: t.kind,
+    value: t.value,
+    weight: t.weight,
+    prize_label: prizeLabel(t.kind, t.value),
+  }));
+}
+
+/** Вселенная барабанов слота: базовые символы + символы троек из исходов. */
+function slotSymbols(): string[] {
+  const out = [...SLOT_SYMBOLS];
+  for (const o of SLOT_OUTCOMES) {
+    if (o.result.startsWith("triple:")) {
+      const sym = o.result.slice("triple:".length).trim();
+      if (sym && !out.includes(sym)) out.push(sym);
+    }
+  }
+  return out.length > 0 ? out : ["🔒"];
+}
+
+/** Исходы слота для таблицы шансов. */
+function slotOutcomes() {
+  return SLOT_OUTCOMES.map((o) => ({
+    result: o.result,
+    weight: o.weight,
+    prize_label: o.kind === null ? null : prizeLabel(o.kind, o.value),
+  }));
+}
+
+/** Полное состояние экрана «Игра» — его же возвращают игровые действия. */
+function buildGameState(s: DemoStore): GameState {
+  const digits = Math.max(3, Math.min(8, CONFIG.game.safe_digits));
+  const attemptLimit = Math.max(1, CONFIG.game.safe_attempts);
+
+  // раунд сейфа жив только в пределах кулдауна — дальше «новый день, новый код»
+  const live = safeRoundLive(s);
+  const round = live ? s.game.safe : null;
+  const status = round?.status ?? "idle";
+  const attempts = round?.attempts ?? [];
+  let canGuess = !live;
+  let safeNext: string | null = null;
+  if (live && round?.at) {
+    canGuess = status === "playing";
+    if (status !== "playing") {
+      safeNext = new Date(
+        Date.parse(round.at) + CONFIG.game.cooldown_hours * HOUR
+      ).toISOString();
+    }
+  }
+
+  const caseView = cooldownView(s.game.case_at);
+  const slotView = cooldownView(s.game.slot_at);
+
   return {
     enabled: CONFIG.game.enabled,
     total_bonus_days: s.game.total_bonus_days,
+    total_bonus_hours: s.game.total_bonus_hours,
+    discount: s.game.discount,
     cooldown_hours: CONFIG.game.cooldown_hours,
-    can_spin: !nextSpin,
-    next_spin_at: nextSpin,
-    can_quiz: !nextQuiz,
-    next_quiz_at: nextQuiz,
-    wheel: { prizes: WHEEL_PRIZES },
-    quiz: {
-      total: CONFIG.game.quiz_questions,
-      reward_days: CONFIG.game.quiz_reward_days,
-      perfect_days: CONFIG.game.quiz_perfect_days,
+    safe: {
+      can_guess: canGuess,
+      next_at: safeNext,
+      digits,
+      attempt_limit: attemptLimit,
+      attempts_used: attempts.length,
+      status,
+      attempts,
+      reward_hours: round?.reward_hours ?? 0,
+      prize_label: round?.prize_label ?? null,
+      code: status === "lost" ? round?.code ?? null : null,
+    },
+    case: {
+      can_open: caseView.can,
+      next_at: caseView.next_at,
+      tiers: caseTiers(),
+    },
+    slot: {
+      can_spin: slotView.can,
+      next_at: slotView.next_at,
+      symbols: slotSymbols(),
+      outcomes: slotOutcomes(),
     },
   };
 }
 
-function playResult(s: DemoStore): GamePlayResult {
-  const now = Date.now();
-  const nextSpin = s.game.next_spin_at && Date.parse(s.game.next_spin_at) > now
-    ? s.game.next_spin_at
-    : null;
-  const nextQuiz = s.game.next_quiz_at && Date.parse(s.game.next_quiz_at) > now
-    ? s.game.next_quiz_at
-    : null;
-  return {
-    reward_days: 0,
-    total_bonus_days: s.game.total_bonus_days,
-    can_spin: !nextSpin,
-    next_spin_at: nextSpin,
-    can_quiz: !nextQuiz,
-    next_quiz_at: nextQuiz,
-  };
+export async function getGameState(): Promise<GameState> {
+  await wait(180, 380);
+  const s = load();
+  return buildGameState(s);
 }
 
-export async function spinWheel(): Promise<GamePlayResult> {
-  await wait(300, 600);
+/** Ход в сейфе: сервер сверяет код и возвращает подсказки по цифрам (2/1/0). */
+export async function safeGuess(code: string): Promise<SafeGuessResult> {
+  await wait(260, 520);
   const s = load();
-  const now = Date.now();
-  if (s.game.next_spin_at && Date.parse(s.game.next_spin_at) > now) {
-    throw new ApiError(429, "Колесо уже крутили — загляните позже.");
+  if (!CONFIG.game.enabled) throw new ApiError(503, "Игры временно отключены.");
+
+  const live = safeRoundLive(s);
+  if (live && (s.game.safe.status === "won" || s.game.safe.status === "lost")) {
+    throw new ApiError(429, "Раунд окончен — новый будет после кулдауна.");
   }
 
-  // взвешенный выбор сектора — как на сервере
-  const total = WHEEL_PRIZES.reduce((sum, p) => sum + p.weight, 0);
-  let roll = Math.random() * total;
-  let prize = WHEEL_PRIZES[0];
-  for (const p of WHEEL_PRIZES) {
-    roll -= p.weight;
-    if (roll <= 0) {
-      prize = p;
-      break;
+  const digits = Math.max(3, Math.min(8, CONFIG.game.safe_digits));
+  const guess = code.trim();
+  if (!/^\d+$/.test(guess) || guess.length !== digits) {
+    throw new ApiError(400, `Код должен состоять из ${digits} цифр.`);
+  }
+
+  // живой раунд — продолжаем его, новый — заводим: новый день, новый код
+  const round = live
+    ? { ...s.game.safe }
+    : {
+        at: new Date().toISOString(),
+        code: makeSafeCode(digits),
+        attempts: [] as SafeAttempt[],
+        status: "idle" as const,
+        prize_label: null as string | null,
+        reward_hours: 0,
+      };
+
+  const attempt: SafeAttempt = {
+    guess,
+    feedback: safeFeedback(round.code ?? "", guess),
+  };
+  round.attempts = [...round.attempts, attempt];
+
+  let reward_days = 0;
+  let reward_hours = 0;
+  let prize: GamePrize | null = null;
+  if (guess === round.code) {
+    round.status = "won";
+    // первый порог, в который уложились по числу попыток
+    const spec = SAFE_PRIZES.find((p) => round.attempts.length <= p.attempts);
+    if (spec) {
+      prize = {
+        kind: spec.kind,
+        value: spec.value,
+        label: prizeLabel(spec.kind, spec.value),
+      };
+      round.prize_label = prize.label;
+      ({ reward_days, reward_hours } = grantPrize(s, spec.kind, spec.value));
     }
+  } else if (round.attempts.length >= Math.max(1, CONFIG.game.safe_attempts)) {
+    round.status = "lost";
+  } else {
+    round.status = "playing";
   }
 
-  const reward = prize.days;
-  addBonusDays(s, reward);
-  s.game.total_bonus_days += reward;
-  s.game.next_spin_at = new Date(
-    now + CONFIG.game.cooldown_hours * HOUR
-  ).toISOString();
-  save(s);
-
-  return { ...playResult(s), reward_days: reward };
-}
-
-/** Раунд викторины: ответы перемешиваем, эталон храним на «сервере». */
-export async function startQuiz(): Promise<QuizRound> {
-  await wait(350, 700);
-  const s = load();
-  const now = Date.now();
-  if (s.game.next_quiz_at && Date.parse(s.game.next_quiz_at) > now) {
-    throw new ApiError(429, "Викторина уже пройдена — загляните позже.");
-  }
-
-  const correct: Record<string, number> = {};
-  const questions: QuizQuestion[] = QUIZ_POOL.map((q) => {
-    const shift = Math.floor(Math.random() * q.options.length);
-    const options = q.options.map((_, i) => q.options[(i + shift) % q.options.length]);
-    correct[q.id] = (q.options.length - shift) % q.options.length;
-    return { id: q.id, q: q.q, options };
-  });
-
-  s.game.quiz_correct = correct;
+  s.game.safe = round;
   save(s);
 
   return {
-    questions,
-    total: questions.length,
-    reward_days: CONFIG.game.quiz_reward_days,
-    perfect_days: CONFIG.game.quiz_perfect_days,
+    ...buildGameState(s),
+    feedback: attempt.feedback,
+    won: round.status === "won",
+    prize,
+    reward_days,
+    reward_hours,
   };
 }
 
-export async function answerQuiz(answers: Record<string, number>): Promise<GamePlayResult> {
-  await wait(500, 900);
+/** Открывает кейс дня: взвешенный выбор редкости — как на сервере. */
+export async function openCase(): Promise<CaseOpenResult> {
+  await wait(320, 620);
   const s = load();
-  const correct = s.game.quiz_correct;
-  if (!correct) throw new ApiError(400, "Раунд не найден — начните заново.");
+  if (!CONFIG.game.enabled) throw new ApiError(503, "Игры временно отключены.");
+  const cd = cooldownView(s.game.case_at);
+  if (!cd.can) throw new ApiError(429, "Кейс уже открывали — загляните позже.");
 
-  let right = 0;
-  for (const [id, answer] of Object.entries(answers)) {
-    if (correct[id] === answer) right += 1;
-  }
-
-  const total = QUIZ_POOL.length;
-  let reward = 0;
-  if (right === total) reward = CONFIG.game.quiz_perfect_days;
-  else if (right >= 3) reward = CONFIG.game.quiz_reward_days;
-
-  addBonusDays(s, reward);
-  s.game.total_bonus_days += reward;
-  s.game.quiz_correct = null;
-  s.game.next_quiz_at = new Date(
-    Date.now() + CONFIG.game.cooldown_hours * HOUR
-  ).toISOString();
+  const tier = weightedPick(caseTiers());
+  const { reward_days, reward_hours } = grantPrize(s, tier.kind, tier.value);
+  s.game.case_at = new Date().toISOString();
   save(s);
 
   return {
-    ...playResult(s),
-    reward_days: reward,
-    correct: right,
-    total,
-    perfect: right === total,
+    ...buildGameState(s),
+    tier: { key: tier.key, label: tier.label, color: tier.color },
+    prize: { kind: tier.kind, value: tier.value, label: tier.prize_label },
+    reward_days,
+    reward_hours,
+  };
+}
+
+/** Крутит слот: исход и барабаны согласованы — как решит сервер. */
+export async function spinSlot(): Promise<SlotSpinResult> {
+  await wait(320, 620);
+  const s = load();
+  if (!CONFIG.game.enabled) throw new ApiError(503, "Игры временно отключены.");
+  const cd = cooldownView(s.game.slot_at);
+  if (!cd.can) throw new ApiError(429, "Слот уже крутили — загляните позже.");
+
+  const outcome = weightedPick(SLOT_OUTCOMES);
+  const symbols = slotSymbols();
+  const pick = () => symbols[Math.floor(Math.random() * symbols.length)];
+  let reels: string[];
+  if (outcome.result.startsWith("triple:")) {
+    const sym = outcome.result.slice("triple:".length).trim() || symbols[0];
+    reels = [sym, sym, sym];
+  } else if (outcome.result === "pair") {
+    const sym = pick();
+    const others = symbols.filter((x) => x !== sym);
+    reels = [sym, sym, others.length > 0 ? others[Math.floor(Math.random() * others.length)] : sym];
+    reels.sort(() => Math.random() - 0.5);
+  } else {
+    const pool = [...symbols].sort(() => Math.random() - 0.5);
+    reels = [...pool, ...symbols].slice(0, 3);
+  }
+
+  let reward_days = 0;
+  let reward_hours = 0;
+  let prize: GamePrize | null = null;
+  if (outcome.kind !== null) {
+    prize = {
+      kind: outcome.kind,
+      value: outcome.value,
+      label: prizeLabel(outcome.kind, outcome.value),
+    };
+    ({ reward_days, reward_hours } = grantPrize(s, outcome.kind, outcome.value));
+  }
+
+  s.game.slot_at = new Date().toISOString();
+  save(s);
+
+  return {
+    ...buildGameState(s),
+    result: outcome.result,
+    reels,
+    prize,
+    reward_days,
+    reward_hours,
   };
 }
 

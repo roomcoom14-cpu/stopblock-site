@@ -166,9 +166,9 @@ export function Menu({ ctx }: { ctx: ScreenCtx }) {
   }
   if (config.game?.enabled) {
     extra.push({
-      icon: "🎡",
-      label: "Игра",
-      desc: "Колесо и викторина — бонусные дни",
+      icon: "🎮",
+      label: "Игры",
+      desc: "Сейф, кейс и слот — бонусы",
       route: { name: "game" },
     });
   }

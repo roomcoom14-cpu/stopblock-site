@@ -155,7 +155,7 @@ const ROUTE_TITLES: Record<string, string> = {
   knowledge: "База знаний",
   article: "Статья",
   referral: "Рефералы",
-  game: "Игра",
+  game: "Игры",
   reviews: "Отзывы",
   "review-write": "Написать отзыв",
   about: "О сервисе",
@@ -175,6 +175,8 @@ interface Ctx {
   refreshProfile: () => Promise<void>;
   /** Есть ли сейчас доступная игра (для бейджа на вкладке «Игра»). */
   gameReady: boolean;
+  /** Пересчитать бейдж «Игра» (после очередного игрового действия). */
+  refreshGameReady: () => void;
   go: (route: Route) => void;
   /**
    * Назад по стеку. На корне вкладки (stack.length === 1) — undefined:
@@ -331,7 +333,7 @@ export default function App() {
     setTheme(toggleTheme());
   }, []);
 
-  /** Есть ли сейчас доступная игра (колесо или викторина) — для бейджа. */
+  /** Есть ли сейчас доступная игра (сейф, кейс или слот) — для бейджа. */
   const refreshGameReady = useCallback(async () => {
     if (!config?.game.enabled) {
       setGameReady(false);
@@ -339,11 +341,16 @@ export default function App() {
     }
     try {
       const s = await api.getGameState();
-      setGameReady(!!(s.enabled && (s.can_spin || s.can_quiz)));
+      setGameReady(
+        !!(
+          s.enabled &&
+          (s.safe?.can_guess || s.case?.can_open || s.slot?.can_spin)
+        )
+      );
     } catch {
       setGameReady(false);
     }
-  }, [config]);
+  }, [config, profile]);
 
   // бейдж на вкладке «Игра»: обновляем после загрузки профиля и после игр
   useEffect(() => {
@@ -397,6 +404,7 @@ export default function App() {
       profile,
       refreshProfile,
       gameReady,
+      refreshGameReady,
       go,
       back: atRoot ? undefined : back,
       exit,

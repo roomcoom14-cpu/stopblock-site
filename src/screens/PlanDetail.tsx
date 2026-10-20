@@ -30,7 +30,7 @@ const DEVICE_SURCHARGE: Record<number, number> = {
 };
 
 export function PlanDetail({ ctx, planId }: { ctx: ScreenCtx; planId: number }) {
-  const { back, content, refreshProfile, go } = ctx;
+  const { back, content, refreshProfile, go, profile } = ctx;
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [devices, setDevices] = useState(1);
@@ -62,8 +62,10 @@ export function PlanDetail({ ctx, planId }: { ctx: ScreenCtx; planId: number }) 
 
   const surcharge = DEVICE_SURCHARGE[devices] ?? 0;
   const total = plan ? plan.price + surcharge : 0;
-  // Итог со скидкой — зеркало app/services/promo.py: max(1, total*(100-p)//100)
-  const discountPercent = promo?.percent ?? 0;
+  // Итог со скидкой — зеркало app/services/promo.py: max(1, total*(100-p)//100);
+  // промокод имеет приоритет, скидка из игры применяется без промокода
+  const gameDiscount = promo ? null : (profile?.discount ?? null);
+  const discountPercent = promo?.percent ?? gameDiscount?.percent ?? 0;
   const discountedTotal = Math.max(1, Math.floor((total * (100 - discountPercent)) / 100));
 
   /** Проверяет промокод на сервере и запоминает скидку. */
@@ -124,6 +126,8 @@ export function PlanDetail({ ctx, planId }: { ctx: ScreenCtx; planId: number }) 
     try {
       const created = await api.createPayment(plan.id, devices, promo?.code);
       setPayment(created);
+      // скидка из игры списалась при создании платежа — обновляем профиль
+      if (gameDiscount) void refreshProfile();
 
       if (created.invoice_link) {
         openInvoice(created.invoice_link, (status) => {
@@ -211,6 +215,12 @@ export function PlanDetail({ ctx, planId }: { ctx: ScreenCtx; planId: number }) 
           <div className="row">
             <span className="row__label">🎟 Промокод {promo.code}</span>
             <span className="row__value">−{discountPercent}%</span>
+          </div>
+        )}
+        {!promo && gameDiscount && (
+          <div className="row">
+            <span className="row__label">🎟 Скидка из игры</span>
+            <span className="row__value">−{gameDiscount.percent}%</span>
           </div>
         )}
       </div>

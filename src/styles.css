@@ -1485,7 +1485,7 @@ html.tg-light .tabbar {
   height: 100%;
 }
 
-/* красная точка-бейдж: есть доступная игра (колесо/викторина) */
+/* красная точка-бейдж: есть доступная игра (сейф, кейс или слот) */
 .tab__badge {
   position: absolute;
   top: -3px;
@@ -1820,7 +1820,7 @@ html.tg-light .tabbar {
 
 .game-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -1850,51 +1850,7 @@ html.tg-light .tabbar {
   border-color: rgba(255, 111, 177, 0.4);
 }
 
-/* ---------------------------------------------------------------- колесо */
-
-.game-wheel-card {
-  text-align: center;
-}
-
-.wheel {
-  position: relative;
-  width: min(260px, 76vw);
-  height: min(260px, 76vw);
-  margin: 6px auto 14px;
-}
-
-.wheel__disc {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  padding: 4px;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 111, 177, 0.25), transparent 70%);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28), inset 0 0 0 2px rgba(255, 111, 177, 0.35);
-  transition: transform 4s cubic-bezier(0.15, 0.9, 0.2, 1);
-  will-change: transform;
-}
-
-.wheel__svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  border-radius: 50%;
-}
-
-/* стрелка-указатель сверху (не вращается) */
-.wheel__pointer {
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 12px solid transparent;
-  border-right: 12px solid transparent;
-  border-top: 20px solid var(--accent-strong);
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
-  z-index: 2;
-}
+/* ---------------------------------------------------------------- сводка */
 
 .game-result {
   font-size: 16px;
@@ -1914,57 +1870,199 @@ html.tg-light .tabbar {
   margin-top: 8px;
 }
 
-.game-result-card {
+/* ---------------------------------------------------------------- сейф */
+
+.safe-card {
   text-align: center;
 }
 
-/* ---------------------------------------------------------------- викторина */
-
-.quiz-q {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--separator);
-}
-
-.quiz-q:first-of-type {
-  border-top: none;
-  padding-top: 0;
-}
-
-.quiz-q__title {
-  font-size: 14.5px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.quiz-q__options {
+.safe-row {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   gap: 6px;
+  margin-top: 8px;
 }
 
-.quiz-opt {
-  padding: 11px 13px;
-  border: 1px solid var(--separator);
+.safe-cell {
+  width: 44px;
+  height: 48px;
   border-radius: 12px;
+  border: 1px solid var(--separator);
   background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.safe-cell--current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.safe-cell--hit {
+  background: rgba(84, 208, 128, 0.22);
+  border-color: rgba(84, 208, 128, 0.6);
+}
+
+.safe-cell--near {
+  background: rgba(255, 200, 77, 0.2);
+  border-color: rgba(255, 200, 77, 0.6);
+}
+
+.safe-cell--miss {
+  opacity: 0.55;
+}
+
+.safe-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.safe-key {
+  padding: 13px 0;
+  border: 1px solid var(--separator);
+  border-radius: 14px;
+  background: var(--glass);
   color: var(--text);
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  text-align: left;
+  font-size: 19px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
+  transition: background 0.14s ease, transform 0.08s ease;
 }
 
-.quiz-opt:active {
-  transform: scale(0.98);
-}
-
-.quiz-opt--selected {
+.safe-key:active {
+  transform: scale(0.95);
   background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--text);
+}
+
+.safe-key:disabled {
+  opacity: 0.5;
+}
+
+.safe-key--fn {
+  font-size: 17px;
+}
+
+.safe-key--go {
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  border-color: transparent;
+  color: #fff;
+}
+
+.safe-key--go:active {
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+}
+
+/* ---------------------------------------------------------------- кейс */
+
+.case-card {
+  text-align: center;
+}
+
+/* окно карусели: победитель встаёт по центру за счёт левого отступа */
+.case-window {
+  overflow: hidden;
+  padding: 10px 0 12px calc(50% - 44px);
+  margin: 6px 0 4px;
+}
+
+.case-strip {
+  display: flex;
+  gap: 8px;
+  will-change: transform;
+}
+
+.case-cell {
+  flex: 0 0 88px;
+  width: 88px;
+  height: 96px;
+  border: 2px solid var(--separator);
+  border-radius: 16px;
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.case-cell__tier {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.case-cell__prize {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* статичная «заглушка» кейса до первого открытия */
+.case-visual {
+  font-size: 72px;
+  line-height: 1;
+  padding: 20px 0;
+  animation: case-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes case-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.case-result__tier {
+  font-size: 17px;
+}
+
+.case-result__note {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------- слот */
+
+.slot-card {
+  text-align: center;
+}
+
+.slot-machine {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.slot-window {
+  width: 76px;
+  height: 54px;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--separator);
+  background: var(--bg-secondary);
+  box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.18);
+}
+
+.slot-strip {
+  will-change: transform;
+}
+
+/* высота ячейки = высоте окна; должна совпадать с REEL_CELL в SlotTab */
+.slot-cell {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1973,15 +2071,16 @@ html.tg-light .tabbar {
     color: var(--text);
   }
 
-  .quiz-opt:hover {
+  .safe-key:hover {
     border-color: rgba(255, 111, 177, 0.5);
     background: var(--accent-soft);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wheel__disc {
-    transition-duration: 0.6s;
+  /* клиент и так не крутит карусели при reduce — гасим пульсацию кейса */
+  .case-visual {
+    animation: none;
   }
 }
 
